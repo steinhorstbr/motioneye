@@ -17,9 +17,9 @@ ARG RUN_UID=0
 ARG RUN_GID=0
 
 COPY . /tmp/motioneye
-RUN apt install ca-certificates
 
-RUN echo "deb https://snapshot.debian.org/archive/debian/20200626T205212Z sid main contrib non-free" >>/etc/apt/sources.list && \
+
+RUN echo "deb https://snapshot.debian.org/archive/debian/20200713T205332Z sid main contrib non-free" >>/etc/apt/sources.list && \
     apt-get update && \
     DEBIAN_FRONTEND="noninteractive" apt-get -t stable --yes --option Dpkg::Options::="--force-confnew" --no-install-recommends install \
       curl \
