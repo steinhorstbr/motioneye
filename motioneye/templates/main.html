@@ -1,0 +1,1231 @@
+{% extends "base.html" %}
+
+{% macro config_item(config, depends="") -%}
+    <tr class="settings-item additional-config"
+            {% if config.get('reboot') and enable_reboot %}reboot="true"{% endif %}
+            {% if config.get('required') %}required="true"{% endif %}
+            {% if config.get('strip') %}strip="true"{% endif %}
+            {% if config.get('depends') %}depends="{{' '.join(config['depends'])}}{% if depends %} {{depends}}{% endif %}"{% endif %}
+            {% if config.get('min') is not none %}min="{{config['min']}}"{% endif %}
+            {% if config.get('max') is not none %}max="{{config['max']}}"{% endif %}
+            {% if config.get('floating') %}floating="true"{% endif %}
+            {% if config.get('sign') %}sign="true"{% endif %}
+            {% if config.get('snap') is not none %}snap="{{config['snap']}}"{% endif %}
+            {% if config.get('ticks') %}ticks="{{config['ticks']}}"{% endif %}
+            {% if config.get('ticksnum') is not none %}ticksnum="{{config['ticksnum']}}"{% endif %}
+            {% if config.get('decimals') is not none %}decimals="{{config['decimals']}}"{% endif %}
+            {% if config.get('unit') %}unit="{{config['unit']}}"{% endif %}
+            {% if config.get('validate') %}validate="{{config['validate']}}"{% endif %}>
+        {% if config['type'] == 'separator' %}
+        <td colspan="100"><div class="settings-item-separator"></div></td>
+        {% else %}
+        <td class="settings-item-label"><span class="settings-item-label">{{config['label']}}</span></td>
+        <td class="settings-item-value">
+            {% if config['type'] == 'str' %}
+                <input type="text" class="styled {{config['section']}} {% if config.get('camera') %}camera{% else %}main{% endif %}-config" id="{{config['name']}}Entry">
+                {% if config['unit'] %}<span class="settings-item-unit">{{config['unit']}}</span>{% endif %}
+            {% elif config['type'] == 'pwd' %}
+                <input type="password" autocomplete="new-password" class="styled {{config['section']}} {% if config.get('camera') %}camera{% else %}main{% endif %}-config" id="{{config['name']}}Entry">
+            {% elif config['type'] == 'number' %}
+                <input type="text" class="number styled {{config['section']}} {% if config.get('camera') %}camera{% else %}main{% endif %}-config" id="{{config['name']}}Entry">
+                {% if config['unit'] %}<span class="settings-item-unit">{{config['unit']}}</span>{% endif %}
+            {% elif config['type'] == 'range' %}
+                <input type="text" class="range styled {{config['section']}} {% if config.get('camera') %}camera{% else %}main{% endif %}-config" id="{{config['name']}}Slider">
+            {% elif config['type'] == 'bool' %}
+                <input type="checkbox" class="styled {{config['section']}} {% if config.get('camera') %}camera{% else %}main{% endif %}-config" id="{{config['name']}}Switch">
+            {% elif config['type'] == 'choices' %}
+                <select class="styled {{config['section']}} {% if config.get('camera') %}camera{% else %}main{% endif %}-config" id="{{config['name']}}Select">
+                    {% for choice in config['choices'] %}
+                    <option value="{{choice[0]}}">{{choice[1]}}</option>
+                    {% endfor %}
+                </select>
+                {% if config['unit'] %}<span class="settings-item-unit">{{config['unit']}}</span>{% endif %}
+            {% elif config['type'] == 'html' %}
+                <div class="html styled {{config['section']}} {% if config.get('camera') %}camera{% else %}main{% endif %}-config" id="{{config['name']}}Html"></div>
+            {% endif %}
+        </td>
+        <td>{% if config.get('description') %}<span class="help-mark" title="{{config['description']}}">?</span>{% endif %}</td>
+        {% endif %}
+    </tr>
+{%- endmacro %}
+
+{% block title %}{% if title %}{{title}}{% else %}{{hostname}}{% endif %}{% endblock %}
+
+{% block style %}
+    {{super()}}
+    <link rel="stylesheet" type="text/css" href="{{static_path}}css/ui.css?v={{version}}" />
+    <link rel="stylesheet" type="text/css" href="{{static_path}}css/main.css?v={{version}}" />
+    {% if frame %}
+        <link rel="stylesheet" type="text/css" href="{{static_path}}css/frame.css?v={{version}}" />
+    {% endif %}
+{% endblock %}
+
+{% block script %}
+    {{super()}}
+    <script type="text/javascript" src="{{static_path}}js/ui.js?v={{version}}"></script>
+    <script type="text/javascript" src="{{static_path}}js/main.js?v={{version}}"></script>
+    {% if frame %}
+        <script type="text/javascript" src="{{static_path}}js/frame.js?v={{version}}"></script>
+    {% endif %}
+    <script type="text/javascript">
+        var adminUsername = '{{admin_username}}';
+        var frame = {% if frame %}true{% else %}false{% endif %};
+        var hasLocalCamSupport = {% if has_motion %}true{% else %}false{% endif %};
+        var hasNetCamSupport = {% if has_motion %}true{% else %}false{% endif %};
+        {% if mask_width %}
+        var maskWidth = {{mask_width}};
+        {% endif %}
+    </script>
+{% endblock %}
+
+{% block body %}
+    {% if not frame %}
+    <div class="header">
+        <div class="header-container">
+            <div class="settings-top-bar closed">
+                <div class="button icon settings-button mouse-effect" title="Configurações"></div
+                ><div class="button icon logout-button mouse-effect" title="Mudar de Usuario"></div>
+                <select class="styled" id="cameraSelect" {% if not add_remove_cameras %}style="display: none;"{% endif %}></select>
+                <div class="button icon rem-camera-button mouse-effect" id="remCameraButton" title="Remover Câmera" {% if not add_remove_cameras %}style="display: none;"{% endif %}></div>
+                <div class="button apply-button" id="applyButton">Apply</div>
+                {% if hostname %}<div class="hostname">{{hostname}}</div>{% endif %}
+            </div>
+            <div class="logo">
+                <a href="">
+                    <span class="logo">Infotec monitoramento</span>
+                    <img class="logo" src="{{static_path}}img/motioneye-logo.svg">
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if not frame %}
+    <div class="page">
+        <div class="settings closed">
+            <div class="settings-container">
+                <form autocomplete="new-password">
+                    <!-- Preferences -->
+                    <div class="settings-section-title" id="preferencesDiv">
+                        <span class="help-mark" title="Preferência do Usuario ">?</span>
+                        <a class="settings-section-title">Preferencias</a>
+                        <span class="minimize open"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" min="1" max="4" snap="1" ticksnum="4" decimals="0" id="layoutColumnsRow">
+                            <td class="settings-item-label"><span class="settings-item-label">Colunas</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled prefs" id="layoutColumnsSlider"></td>
+                            <td><span class="help-mark" title="Configura o numero de colunas a ser exibido">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Ajustar quadros verticalmente</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled prefs" id="fitFramesVerticallySwitch"></td>
+                            <td><span class="help-mark" title="controla se os tamanhos dos quadros podem ser reduzidos para caber verticalmente na janela ou não">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="4" snap="1" ticksnum="4" decimals="0" id="layoutRows" depends="fitFramesVertically">
+                            <td class="settings-item-label"><span class="settings-item-label">Linhas</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled prefs" id="layoutRowsSlider"></td>
+                            <td><span class="help-mark" title="configura o número de linhas usadas para organizar os quadros da câmera">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="100" snap="2" ticksnum="6" decimals="0">
+                            <td class="settings-item-label"><span class="settings-item-label">Redutor da taxa de quadros</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled prefs" id="framerateDimmerSlider"></td>
+                            <td><span class="help-mark" title="reduz a taxa de quadros global para economizar internet na hora de visualizar">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="100" snap="2" ticks="1|20|40|60|80|100" decimals="0">
+                            <td class="settings-item-label"><span class="settings-item-label">Qualidade da transmissão</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled prefs" id="resolutionDimmerSlider"></td>
+                            <td><span class="help-mark" title="diminui a resolução real de todas as câmeras para economizar largura de banda e tráfego de rede">?</span></td>
+                        </tr>
+                    </table>
+
+                    <tr class="settings-item">
+                        <td colspan="100"><div class="settings-item-separator" style="margin: 0px 0px 1.5em 0px;"></div></td>
+                    </tr>
+
+                    <!-- General Settings -->
+                    <div class="settings-section-title" id="generalSectionDiv">
+                        <span class="help-mark" title="configurações gerais, não relacionadas a nenhuma câmera">?</span>
+                        <a class="settings-section-title">Configurações gerais</a>
+                        <span class="minimize open"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" required="true" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Administrador</span></td>
+                            <td class="settings-item-value"><input type="text" autocapitalize="none" class="styled general main-config" id="adminUsernameEntry" readonly="readonly"></td>
+                            <td><span class="help-mark" title="Este é o unico usuario que pode alterar configurações">?</span></td>
+                        </tr>
+                        <tr class="settings-item" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Senha do Administrador</span></td>
+                            <td class="settings-item-value"><input type="password" autocomplete="new-password" class="styled general main-config" id="adminPasswordEntry"></td>
+                            <td><span class="help-mark" title="Senha">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Usuario Visualizador</span></td>
+                            <td class="settings-item-value"><input type="text" autocapitalize="none" class="styled general main-config" id="normalUsernameEntry"></td>
+                            <td><span class="help-mark" title="Este é o usuario que podera somente ver e baixar videos e imagens">?</span></td>
+                        </tr>
+                        <tr class="settings-item" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Senha</span></td>
+                            <td class="settings-item-value"><input type="password" autocomplete="new-password" class="styled general main-config" id="normalPasswordEntry"></td>
+                            <td><span class="help-mark" title="Senha do usuario de visualização (deixe em branco para nao solicitar senha) ">?</span></td>
+                        </tr>
+                        {% for config in main_sections.get('general', {}).get('configs', []) %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Versão do Sistema</span></td>
+                            <td class="settings-item-value"><span class="settings-item-label">{{version}}</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Versão Ativa do Motion</span></td>
+                            <td class="settings-item-value"><span class="settings-item-label">{{motion_version}}</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Esta Rodando sob o Sistema</span></td>
+                            <td class="settings-item-value"><span class="settings-item-label">{{os_version}}</span></td>
+                        </tr>
+                        {% if enable_update %}
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Software Update</span></td>
+                            <td class="settings-item-value"><div class="button normal-button update-button" id="updateButton">Check</div></td>
+                            <td><span class="help-mark" title="checks for new versions and performs updates">?</span></td>
+                        </tr>
+                        {% endif %}
+                        <tr class="settings-item{% if not enable_reboot %} hidden{% endif %}">
+                            <td class="settings-item-label"><span class="settings-item-label">Power</span></td>
+                            <td class="settings-item-value"><div class="button normal-button shut-down-button" id="shutDownButton">Shut Down</div></td>
+                            <td><span class="help-mark" title="shuts down the system">?</span></td>
+                        </tr>
+                        <tr class="settings-item{% if not enable_reboot %} hidden{% endif %}">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value"><div class="button normal-button reboot-button" id="rebootButton">Reboot</div></td>
+                            <td><span class="help-mark" title="reboots the system">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Configuração</span></td>
+                            <td class="settings-item-value"><div class="button normal-button backup-button" id="backupButton">Backup</div></td>
+                            <td><span class="help-mark" title="Cria backup das informações da camera">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value"><div class="button normal-button restore-button" id="restoreButton">Restore</div></td>
+                            <td><span class="help-mark" title="Restaura o arquivo de configuração">?</span></td>
+                        </tr>
+                    </table>
+
+                    <!-- Additional Main Sections -->
+                    {% for section in main_sections.values() %}
+                    {% if section.get('label') and section.get('configs') %}
+                    <div class="settings-section-title additional-section">
+                        {% if section.get('onoff') %}<input type="checkbox" class="styled section additional-section {{section['name']}} main-config" id="{{section['name']}}Switch">{% endif %}
+                        {% if section.get('description') %}<span class="help-mark" title="{{section['description']}}">?</span>{% endif %}
+                        <a class="settings-section-title">{{section['label']}}</a>
+                        <span class="minimize {% if section.get('open') %}open{% endif %}"></span>
+                    </div>
+                    <table class="settings">
+                        {% for config in section['configs'] %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+                    {% endif %}
+                    {% endfor %}
+
+                    <tr class="settings-item">
+                        <td colspan="100"><div class="settings-item-separator" style="margin: 0px 0px 1.5em 0px;"></div></td>
+                    </tr>
+
+                    <!-- Video Device -->
+                    <div class="settings-section-title" id="deviceSectionDiv">
+                        <input type="checkbox" class="styled section device camera-config" id="videoDeviceEnabledSwitch">
+                        <span class="help-mark" title="ative se você quiser usar este dispositivo da câmera">?</span>
+                        <a class="settings-section-title">Dispositivo de video</a>
+                        <span class="minimize open"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" required="true" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Nome da câmera</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled device camera-config" id="deviceNameEntry" placeholder="camera name..."></td>
+                            <td><span class="help-mark" title="Insira aqui o nome da câmera">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Camera ID</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled device camera-config" id="deviceIdEntry" readonly="readonly"></td>
+                            <td><span class="help-mark" title="ID da camera">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Câmera</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled device camera-config" id="deviceUrlEntry" readonly="readonly"></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Tipo de Câmera</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled device camera-config" id="deviceTypeEntry" readonly="readonly"></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Brilho automatico</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled device camera-config" id="autoBrightnessSwitch"></td>
+                            <td><span class="help-mark" title="ativa o brilho automático do software (recomendado apenas para câmeras sem autobrilho)">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Resolução</span></td>
+                            <td class="settings-item-value">
+                                <select class="video-resolution styled device camera-config" id="resolutionSelect">
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="a resolução do vídeo (valores maiores produzem melhor qualidade, mas exigem mais energia da CPU, maior espaço de armazenamento e largura de banda)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="96" max="4096" required="true" depends="resolution=custom">
+                            <td class="settings-item-label"><span class="settings-item-label">Altura</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled number device camera-config" id="customWidthEntry"></td>
+                            <td><span class="help-mark" title="Altura customizada ">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="96" max="4096" required="true" depends="resolution=custom">
+                            <td class="settings-item-label"><span class="settings-item-label">Largura</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled number device camera-config" id="customHeightEntry"></td>
+                            <td><span class="help-mark" title="Largura customizada">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Girar video</span></td>
+                            <td class="settings-item-value">
+                                <select class="rotation styled device camera-config" id="rotationSelect">
+                                    <option value="0">0&deg;</option>
+                                    <option value="90">90&deg;</option>
+                                    <option value="180">180&deg;</option>
+                                    <option value="270">270&deg;</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="Use esta função para rotacionar o video">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="2" max="30" snap="0" ticks="2|5|10|15|20|25|30" decimals="0">
+                            <td class="settings-item-label"><span class="settings-item-label">Taxa de Frames</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled device camera-config" id="framerateSlider"></td>
+                            <td><span class="help-mark" title="define o número de quadros capturados pela câmera a cada segundo (valores mais altos produzem vídeos mais suaves, mas requerem mais energia da CPU, maior espaço de armazenamento e largura de banda)">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Área Privada</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled device camera-config" id="privacyMaskSwitch"></td>
+                            <td><span class="help-mark" title="permite mascarar imagens para impedir que algumas áreas da imagem sejam gravadas para proteger a privacidade">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="privacyMask">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value">
+                                <div class="button normal-button edit-mask-button" id="privacyMaskEditButton">Editar</div>
+                                <div class="button normal-button save-mask-button" id="privacyMaskSaveButton">Salvar</div>
+                                <input type="text" class="device camera-config" id="privacyMaskLinesEntry">
+                            </td>
+                            <td><span class="help-mark" title="clique neste botão para ativar / desativar o editor de máscaras">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="privacyMask">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value"><div class="button normal-button clear-mask-button" id="privacyMaskClearButton">Limpar tudo</div></td>
+                            <td><span class="help-mark" title="clique neste botão para limpar a máscara atual">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Opções extras do Motion</span></td>
+                            <td class="settings-item-value"><textarea class="styled device camera-config" id="extraOptionsEntry" rows="3"></textarea></td>
+                            <td><span class="help-mark" title="você pode adicionar aqui qualquer opção extra para o daemon do movimento (use o formato "nome do valor", uma opção por linha)">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('device', {}).get('configs', []) %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- File Storage -->
+                    <div class="settings-section-title" id="storageSectionDiv">
+                        <span class="help-mark" title="Local onde as gravações serão salvas">?</span>
+                        <a class="settings-section-title">File Storage</a>
+                        <span class="minimize"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Armazenamento</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled storage camera-config" id="storageDeviceSelect">
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="indica o dispositivo de armazenamento onde os arquivos de imagem e vídeo serão salvos">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="storageDevice=network-share" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Servidor de rede</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled storage camera-config" id="networkServerEntry"></td>
+                            <td><span class="help-mark" title="o endereço do servidor de rede (endereço IP ou nome do host)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="storageDevice=network-share">
+                            <td class="settings-item-label"><span class="settings-item-label">Protocolo SMB</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled storage camera-config" id="networkSMBVerSelect">
+                                    <option value="1.0">1.0</option>
+                                    <option value="2.0">2.0</option>
+                                    <option value="2.1">2.1</option>
+                                    <option value="3.0">3.0</option>
+                                    <option value="3.1.1">3.1.1</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="seleciona a versão SMB a ser usada (teste as várias opções e veja qual funciona melhor com o seu NAS)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="storageDevice=network-share" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Nome do compartilhamento</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled storage camera-config" id="networkShareNameEntry"></td>
+                            <td><span class="help-mark" title="o nome do compartilhamento de rede">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="storageDevice=network-share" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Usuario do compartilhamento</span></td>
+                            <td class="settings-item-value"><input type="text" autocapitalize="none" class="styled storage camera-config" id="networkUsernameEntry"></td>
+                            <td><span class="help-mark" title="o nome de usuário a ser fornecido ao acessar o compartilhamento de rede (deixe em branco se nenhum nome de usuário for necessário)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="storageDevice=network-share" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Senha</span></td>
+                            <td class="settings-item-value"><input type="password" autocomplete="new-password" class="styled storage camera-config" id="networkPasswordEntry"></td>
+                            <td><span class="help-mark" title="Senha do compartilhamento ( deixe em branco se nao for usado nenhuma senha)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Diretorio Root</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled storage camera-config" id="rootDirectoryEntry"></td>
+                            <td><span class="help-mark" title="o caminho raiz (no dispositivo de armazenamento selecionado) onde os arquivos serão salvos">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="storageDevice=network-share">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value"><div class="button normal-button test-button" id="networkShareTestButton">Test Share</div></td>
+                            <td><span class="help-mark" title="clique neste botão para testar a conectividade de compartilhamento de rede depois de preencher os detalhes necessários">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Uso do disco</span></td>
+                            <td class="settings-item-value">
+                                <div id="diskUsageProgressBar" class="progress-bar"></div>
+                            </td>
+                            <td><span class="help-mark" title="o tamanho total / usado do disco em que o diretório raiz reside">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Upload de arquivos de midia</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled storage camera-config" id="uploadEnabledSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se desejar que seus arquivos de mídia sejam enviados para um serviço externo">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Upload de fotos</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled storage camera-config" id="uploadPictureSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se desejar que as fotos sejam enviadas para um serviço externo">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Upload de videos</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled storage camera-config" id="uploadMovieSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se desejar que os vídeos sejam enviados para um serviço externo">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Serviço de Upload</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled storage camera-config" id="uploadServiceSelect">
+                                    <option value="ftp">FTP Server</option>
+                                    <option value="sftp">SFTP Server</option>
+    <!--                                 <option value="http">HTTP Server</option> -->
+    <!--                                 <option value="https">HTTPS Server</option> -->
+                                    <option value="gdrive">Google Drive</option>
+                                    <option value="gphoto">Google Photo</option>
+                                    <option value="dropbox">Dropbox</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="escolha um serviço para o qual os arquivos de mídia devem ser carregados">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="uploadEnabled uploadService=(ftp|sftp|http|https)">
+                            <td class="settings-item-label"><span class="settings-item-label">Endereço do servidor</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled storage camera-config" id="uploadServerEntry"></td>
+                            <td><span class="help-mark" title="o nome do domínio ou o endereço IP do servidor (por exemplo, ftp.example.com ou 192.168.1.3)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" min="1" max="65535" depends="uploadEnabled uploadService=(ftp|sftp|http|https)">
+                            <td class="settings-item-label"><span class="settings-item-label">Porta de serviço</span></td>
+                            <td class="settings-item-value"><input type="text" class="number styled storage camera-config" id="uploadPortEntry"></td>
+                            <td><span class="help-mark" title="a porta a ser usada ao se conectar ao serviço (deixe em branco para usar o valor padrão)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled uploadService=(http|https)">
+                            <td class="settings-item-label"><span class="settings-item-label">Metodo</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled storage camera-config" id="uploadMethodSelect">
+                                    <option value="post">POST</option>
+                                    <option value="put">PUT</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="o método HTTP a ser usado ao fazer upload de arquivos">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="uploadEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Localização dos arquivos</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled storage camera-config" id="uploadLocationEntry"></td>
+                            <td><span class="help-mark" title="o local (caminho raiz) onde os arquivos de mídia devem ser carregados (por exemplo, / files / cam1 /)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled uploadService!=(gphoto)">
+                            <td class="settings-item-label"><span class="settings-item-label">Incluir subpastas</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled storage camera-config" id="uploadSubfoldersSwitch"></td>
+                            <td><span class="help-mark" title="habilite isso para carregar os arquivos de mídia junto com suas subpastas, em vez de colocá-los diretamente no local raiz">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled uploadService=(gdrive)">
+                            <td class="settings-item-label"><span class="settings-item-label">Limpar Cloud</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled storage camera-config" id="cleanCloudEnabledSwitch"></td>
+                            <td><span class="help-mark" title="habilite isso para excluir os arquivos de mídia enviados na nuvem, bem como quando os arquivos de mídia locais forem excluídos de acordo com a configuração de persistência de arquivo, atualmente esta opção está disponível apenas para o gdrive">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled uploadService=(ftp|sftp|http|https)">
+                            <td class="settings-item-label"><span class="settings-item-label">Usuario</span></td>
+                            <td class="settings-item-value"><input type="text" autocapitalize="none" class="styled storage camera-config" id="uploadUsernameEntry"></td>
+                            <td><span class="help-mark" title="usuario do serviço">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled uploadService=(ftp|sftp|http|https)">
+                            <td class="settings-item-label"><span class="settings-item-label">Senha</span></td>
+                            <td class="settings-item-value"><input type="password" autocomplete="new-password" class="styled storage camera-config" id="uploadPasswordEntry"></td>
+                            <td><span class="help-mark" title="senha de serviço">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled uploadService=(gdrive|gphoto|dropbox)">
+                            <td class="settings-item-label"><span class="settings-item-label">Key ( Chave de autorização)</span></td>
+                            <td class="settings-item-value"><input type="password" autocomplete="new-password" class="styled storage camera-config" id="uploadAuthorizationKeyEntry"></td>
+                            <td><span class="help-mark" title="a chave usada para autenticar com o serviço de upload (normalmente necessário apenas durante a instalação)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled uploadService=(gdrive|gphoto|dropbox)">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value">
+                                <div class="html styled storage camera-config" id="authorizeLinkHtml">
+                                    <a href="javascript:authorizeUpload()">Obter Key</a>
+                                </div>
+                            </td>
+                            <td><span class="help-mark" title="clique aqui para obter a chave de autorização de serviço">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="uploadEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value"><div class="button normal-button test-button" id="uploadTestButton">Testar conectividade</div></td>
+                            <td><span class="help-mark" title="clique neste botão para testar o serviço de upload depois de preencher os detalhes necessários">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Call A Web Hook</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled storage camera-config" id="webHookStorageEnabledSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se desejar que uma URL seja solicitada após a criação de um arquivo de mídia">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="webHookStorageEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Web Hook URL</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled storage camera-config" id="webHookStorageUrlEntry" placeholder="e.g. http://example.com/notify/"></td>
+                            <td><span class="help-mark" title="um URL a ser solicitado quando for detectado movimento; os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = day, %H = hour, %M = minute, %S = second, %q = frame number, %v = event number, %f = file path">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="webHookStorageEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">HTTP Method</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled storage camera-config" id="webHookStorageHttpMethodSelect">
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST (query)</option>
+                                    <option value="POSTf">POST (form)</option>
+                                    <option value="POSTj">POST (json)</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title=" método HTTP a ser usado ao solicitar a URL do gancho da Web (os parâmetros codificados em URL fornecidos serão de fato transmitidos conforme indicado aqui)">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Rodar um comando</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled storage camera-config" id="commandStorageEnabledSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se desejar executar um comando após a criação de um arquivo de mídia">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="commandStorageEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Comando</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled storage camera-config" id="commandStorageEntry" placeholder="command..."></td>
+                            <td><span class="help-mark" title="um comando a ser executado após a criação de um arquivo de mídia; vários comandos podem ser separados por ponto e vírgula; não use ponto e vírgula dentro de comandos; os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = day, %H = hour, %M = minute, %S = second, %q = frame number, %v = event number, %f = file path">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('storage', {}).get('configs', []) %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- Text Overlay -->
+                    <div class="settings-section-title" id="textOverlaySectionDiv">
+                        <input type="checkbox" class="styled section text-overlay camera-config" id="textOverlayEnabledSwitch">
+                        <span class="help-mark" title="escolha quais informações serão exibidas nos quadros capturados">?</span>
+                        <a class="settings-section-title">Texto de sobreposição</a>
+                        <span class="minimize"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Lado Esquerdo</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled text-overlay camera-config" id="leftTextTypeSelect">
+                                    <option value="camera-name">Nome da Câmera</option>
+                                    <option value="timestamp">Data e Hora</option>
+                                    <option value="custom-text">Endereço</option>
+                                    <option value="disabled">Desativado</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="define o texto exibido nos filmes e imagens, no canto inferior esquerdo">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="leftTextType=custom-text" strip="true">
+                            <td class="settings-item-label"></td>
+                            <td class="settings-item-value"><input type="text" class="styled text-overlay camera-config" id="leftTextEntry" placeholder="custom text..."></td>
+                            <td><span class="help-mark" title="define um texto esquerdo personalizado; os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = day, %H = hour, %M = minute, %S = second, %q = frame number, %v = event number, %T = HH:MM:SS, \n = new line">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Lado Direito</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled text-overlay camera-config" id="rightTextTypeSelect">
+                                    <option value="camera-name">Nome da Câmera</option>
+                                    <option value="timestamp">Data e Hora</option>
+                                    <option value="custom-text">Endereço</option>
+                                    <option value="disabled">Desativar</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="define o texto exibido nos filmes e imagens, no canto inferior direito">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="rightTextType=custom-text" strip="true">
+                            <td class="settings-item-label"></td>
+                            <td class="settings-item-value"><input type="text" class="styled text-overlay camera-config" id="rightTextEntry" placeholder="Insira o texto aqui..."></td>
+                            <td><span class="help-mark" title="define um texto correto personalizado; os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = day, %H = hour, %M = minute, %S = second, %q = frame number, %v = event number, %T = HH:MM:SS, \n = new line">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="10" snap="1" ticksnum="10" decimals="0">
+                            <td class="settings-item-label"><span class="settings-item-label">Escala (Tamanho)</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled text-overlay camera-config" id="textScaleSlider"></td>
+                            <td><span class="help-mark" title="define o tamanho do texto da sobreposição">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('text-overlay', {}).get('configs', []) %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- Video Streaming -->
+                    <div class="settings-section-title" minimize-switch-independent="true" id="streamingSectionDiv">
+                        <input type="checkbox" class="styled section streaming camera-config" id="videoStreamingEnabledSwitch">
+                        <span class="help-mark" title="Habilite isso se desejar transmitir vídeo para esta câmera">?</span>
+                        <a class="settings-section-title">Streaming de das gravações</a>
+                        <span class="minimize"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" min="1" max="30" snap="0" ticks="1|5|10|15|20|25|30" decimals="0">
+                            <td class="settings-item-label"><span class="settings-item-label">Taxa de quadros de streaming</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled streaming camera-config" id="streamingFramerateSlider"></td>
+                            <td><span class="help-mark" title="define o número de quadros transmitidos a cada segundo na transmissão ao vivo">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="100" snap="2" ticksnum="5" decimals="0" unit="%">
+                            <td class="settings-item-label"><span class="settings-item-label">Qualidade do Streaming</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled streaming camera-config" id="streamingQualitySlider"></td>
+                            <td><span class="help-mark" title="define a qualidade da transmissão ao vivo (valores mais altos produzem uma melhor qualidade de vídeo, mas exigem mais largura de banda)">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Redimensionar Streaming</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled streaming camera-config" id="streamingServerResizeSwitch"></td>
+                            <td><span class="help-mark" title="Quando isso está ativado, as imagens são redimensionadas antes de serem enviadas ao navegador (desativadas ao executar em uma CPU lenta)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="100" snap="2" ticksnum="5" decimals="0" unit="%" depends="streamingServerResize">
+                            <td class="settings-item-label"><span class="settings-item-label">Streaming Resolution</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled streaming camera-config" id="streamingResolutionSlider"></td>
+                            <td><span class="help-mark" title="the streaming resolution given as percent of the video device resolution (higher values produce better video quality but require more bandwidth)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1024" max="65535" depends="videoStreamingEnabled" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Streaming Port</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled streaming camera-config" id="streamingPortEntry"></td>
+                            <td><span class="help-mark" title="sets the TCP port on which the webcam streaming server listens">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="videoStreamingEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Modo de autenticação</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled streaming camera-config" id="streamingAuthModeSelect">
+                                    <option value="disabled">Desativado</option>
+                                    <option value="basic">Basico</option>
+                                    <option value="digest">Digest</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="o método de autenticação usado pelo fluxo (escolha Básico em vez de Digest se você tiver problemas com aplicativos de terceiros); credenciais de vigilância serão usadas">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Otimização de motion</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled streaming camera-config" id="streamingMotion"></td>
+                            <td><span class="help-mark" title="ative isso se desejar uma taxa de quadros mais baixa para a transmissão ao vivo quando nenhum movimento for detectado">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="videoStreamingEnabled">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">URLs úteis</span></td>
+                            <td class="settings-item-value">
+                                <div class="html styled streaming camera-config" id="streamingSnapshotUrlHtml">
+                                    <a href="javascript:showSnapshotUrl()">Snapshot URL</a>
+                                </div>
+                            </td>
+                            <td><span class="help-mark" title="um URL que fornece uma imagem JPEG com o instantâneo mais recente da câmera">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"></td>
+                            <td class="settings-item-value">
+                                <div class="html styled streaming camera-config" id="streamingMjpgUrlHtml">
+                                    <a href="javascript:showMjpgUrl()">Streaming URL</a>
+                                </div>
+                            </td>
+                            <td><span class="help-mark" title="um URL que fornece um fluxo MJPEG da câmera">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"></td>
+                            <td class="settings-item-value">
+                                <div class="html styled streaming camera-config" id="streamingEmbedUrlHtml">
+                                    <a href="javascript:showEmbedUrl()">URL Imcorporada</a>
+                                </div>
+                            </td>
+                            <td><span class="help-mark" title="um URL que fornece um documento HTML mínimo contendo o quadro da câmera, pronto para ser incorporado">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('streaming', {}).get('configs', []) %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- Still Images -->
+                    <div class="settings-section-title" id="stillImagesSectionDiv">
+                        <input type="checkbox" class="styled section still-images camera-config" id="stillImagesEnabledSwitch">
+                        <span class="help-mark" title="ative-o se desejar capturar imagens estáticas (fotos)">?</span>
+                        <a class="settings-section-title">Captura de Imagens</a>
+                        <span class="minimize"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" required="true" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Nome das Imagens</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled still-images camera-config" id="imageFileNameEntry" placeholder="file name pattern..."></td>
+                            <td><span class="help-mark" title="define o padrão de nome para os arquivos de imagem (JPEG); os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = day, %H = hour, %M = minute, %S = second, %q = frame number, %v = event number, / = subfolder">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="100" snap="2" ticksnum="5" decimals="0" unit="%">
+                            <td class="settings-item-label"><span class="settings-item-label">Qualidade das Imagens</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled still-images camera-config" id="imageQualitySlider"></td>
+                            <td><span class="help-mark" title="define a qualidade da imagem JPEG (valores mais altos produzem uma melhor qualidade de imagem, mas requerem mais espaço de armazenamento)">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Modo de Captura</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled still-images camera-config" id="captureModeSelect">
+                                    <option value="motion-triggered">Com movimento acionado</option>
+                                    <option value="motion-triggered-one">Movimento acionado (Uma imagem)</option>
+                                    <option value="interval-snapshots">Disparos com intervalo</option>
+                                    <option value="all-frames">A todo momento</option>
+                                    <option value="manual">Manual</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="Movimento acionado = uma imagem capturada sempre que o movimento é detectado,
+                                    Instantâneos de intervalo = uma imagem capturada a cada x segundos,
+                                    Todos os quadros = salva cada quadro em um arquivo de imagem,
+                                    Manual = snapshots manuais usando o botão snapshot">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="86400" required="true" depends="captureMode=interval-snapshots">
+                            <td class="settings-item-label"><span class="settings-item-label">Disparos com intervalo</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled number still-images camera-config" id="snapshotIntervalEntry"><span class="settings-item-unit">Segundos</span></td>
+                            <td><span class="help-mark" title="define o intervalo (em segundos) para as fotos">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Guardar imagens por:</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled still-images camera-config" id="preservePicturesSelect">
+                                    <option value="1">Um dia</option>
+                                    <option value="7">Uma semana</option>
+                                    <option value="30">Um mês</option>
+                                    <option value="365">Um ano</option>
+                                    <option value="0">Para sempre</option>
+                                    <option value="-1">Escolher manualmente</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="as imagens anteriores à duração especificada são excluídas automaticamente para liberar espaço de armazenamento">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="3650" depends="preservePictures=-1" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Tempo de Armazenamento</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled number still-images camera-config" id="picturesLifetimeEntry"><span class="settings-item-unit">Dias</span></td>
+                            <td><span class="help-mark" title="define o número de dias após os quais as imagens serão excluídas automaticamente">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Ativar captura manual</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled still-images camera-config" id="manualSnapshotsSwitch"></td>
+                            <td><span class="help-mark" title="quando isso está ativado, um botão no quadro da câmera permite tirar fotos instantaneamente">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('still-images', {}).get('configs', []) %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- Movies -->
+                    <div class="settings-section-title" id="moviesSectionDiv">
+                        <input type="checkbox" class="styled section movies camera-config" id="moviesEnabledSwitch">
+                        <span class="help-mark" title="habilite isso se você quiser gravar filmes">?</span>
+                        <a class="settings-section-title">Gravações</a>
+                        <span class="minimize"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" required="true" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Nome do Arquivo de video</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled movies camera-config" id="movieFileNameEntry" placeholder="file name pattern..."></td>
+                            <td><span class="help-mark" title="define o padrão de nome para os arquivos de filme; os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = day, %H = hour, %M = minute, %S = second, %q = frame number, %v = event number, / = subfolder">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Apenas gravar sem filtros</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled movies camera-config" id="moviePassthroughSwitch"></td>
+                            <td><span class="help-mark" title="Crie arquivos de filme do movimento diretamente da câmera. Esta opção deve reduzir o uso da CPU, mas aumenta os requisitos de memória. Nenhum processamento de imagem é realizado, portanto, sobreposições de texto, máscaras de privacidade etc. não estarão no vídeo resultante.">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="!moviePassthrough">
+                            <td class="settings-item-label"><span class="settings-item-label">Formato</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled movies camera-config" id="movieFormatSelect">
+                                    <option value="mpeg4">MPEG4 (.avi)</option>
+                                    <option value="msmpeg4">MSMPEG4v2 (.avi)</option>
+                                    <option value="swf">Formato Web pequeno (.swf)</option>
+                                    <option value="flv">Flash Video (.flv)</option>
+                                    <option value="mov">QuickTime (.mov)</option>
+                                    <option value="mp4">H.264 (.mp4)</option>
+                                    {% if has_h264_nvenc_support %}
+                                    <option value="mp4:h264_nvenc">H.264/NVENC (.mp4)</option>
+                                    {% endif %}
+                                    {% if has_h264_nvmpi_support %}
+                                    <option value="mp4:h264_nvmpi">H.264/NVMPI (.mp4)</option>
+                                    {% endif %}
+                                    {% if has_h264_qsv_support %}
+                                    <option value="mp4:h264_qsv">H.264/QSV (.mp4)</option>
+                                    {% endif %}
+                                    {% if has_h264_omx_support %}
+                                    <option value="mp4:h264_omx">H.264/OMX (.mp4)</option>
+                                    {% endif %}
+                                    {% if has_h264_v4l2m2m_support %}
+                                    <option value="mp4:h264_v4l2m2m">H.264/V4L2M2M (.mp4)</option>
+                                    {% endif %}
+                                    <option value="hevc">HEVC (.mp4)</option>
+                                    {% if has_hevc_nvenc_support %}
+                                    <option value="mp4:hevc_nvenc">HEVC/NVENC (.mp4)</option>
+                                    {% endif %}
+                                    {% if has_hevc_nvmpi_support %}
+                                    <option value="mp4:hevc_nvmpi">HEVC/NVMPI (.mp4)</option>
+                                    {% endif %}
+                                    {% if has_hevc_qsv_support %}
+                                    <option value="mp4:hevc_qsv">HEVC/QSV (.mp4)</option>
+                                    {% endif %}
+                                    <option value="mkv">Matroska Video (.mkv)</option>
+                                    {% if has_h264_omx_support %}
+                                    <option value="mkv:h264_omx">Matroska Video/OMX (.mkv)</option>
+                                    {% endif %}
+                                    {% if has_h264_v4l2m2m_support %}
+                                    <option value="mkv:h264_v4l2m2m">Matroska Video/V4L2M2M (.mkv)</option>
+                                    {% endif %}
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="define o formato do arquivo de filme; nem todos os formatos têm garantia de funcionar em todos os sistemas; em caso de dúvida, teste cada formato e selecione o que melhor funciona com seu player de vídeo">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="100" snap="2" ticksnum="5" decimals="0" unit="%">
+                            <td class="settings-item-label"><span class="settings-item-label">Qualidade</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled movies camera-config" id="movieQualitySlider"></td>
+                            <td><span class="help-mark" title="define a qualidade do vídeo MPEG (valores mais altos produzem uma melhor qualidade de vídeo, mas requerem mais espaço de armazenamento)">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Metodo de gravação</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled movies camera-config" id="recordingModeSelect">
+                                    <option value="motion-triggered">Com movimento acionado</option>
+                                    <option value="continuous">Gravação continua</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="define o modo de gravação: Movimento acionado = um novo filme criado sempre que o movimento é detectado, Gravação contínua = um grande arquivo de filme">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="86400" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Duração máxima da gravação</span></td>
+                            <td class="settings-item-value"><input type="text" class="number styled movies camera-config" id="maxMovieLengthEntry"><span class="settings-item-unit">seconds</span></td>
+                            <td><span class="help-mark" title="define a duração máxima dos filmes, em segundos; se o evento de movimento durar mais, um novo arquivo de filme será criado; use 0 para comprimento ilimitado">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Armazenar Por:</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled movies camera-config" id="preserveMoviesSelect">
+                                    <option value="1">Um dia</option>
+                                    <option value="7">Uma semana</option>
+                                    <option value="30">Um mês</option>
+                                    <option value="365">Um ano</option>
+                                    <option value="0">Para sempre</option>
+                                    <option value="-1">Customizar</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="os filmes anteriores à duração especificada são excluídos automaticamente para liberar espaço de armazenamento">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="3650" depends="preserveMovies=-1" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Tempo de Armazenamento</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled number movies camera-config" id="moviesLifetimeEntry"><span class="settings-item-unit">days</span></td>
+                            <td><span class="help-mark" title="define o número de dias após os quais os filmes serão excluídos automaticamente">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('movies', {}).get('configs', []) %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- Motion Detection -->
+                    <div class="settings-section-title" id="motionDetectionSectionDiv">
+                        <input type="checkbox" class="styled section motion-detection camera-config" id="motionDetectionEnabledSwitch">
+                        <span class="help-mark" title="habilite isso para usar e configurar o mecanismo de detecção de movimento">?</span>
+                        <a class="settings-section-title">Oprções de detecção</a>
+                        <span class="minimize"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" min="0" max="20" snap="0" ticksnum="5" decimals="1" unit="%" depends="!autoThresholdTuning">
+                            <td class="settings-item-label"><span class="settings-item-label">Limite de alteração de quadro</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled motion-detection camera-config" id="frameChangeThresholdSlider"></td>
+                            <td><span class="help-mark" title="indica a porcentagem mínima da imagem que deve ser alterada entre dois quadros sucessivos para que o movimento seja detectado (valores menores fornecem uma detecção mais sensível, mas são propensos a falsos positivos)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" required="true" depends="!autoThresholdTuning">
+                            <td class="settings-item-label"><span class="settings-item-label">Limite máximo de alteração</span></td>
+                            <td class="settings-item-value"><input type="text" class="number styled motion-detection camera-config" id="maxFrameChangeThresholdEntry"><span class="settings-item-unit">pixels</span></td>
+                            <td><span class="help-mark" title="define o número de pixels alterados entre os quadros acima dos quais o movimento não é mais acionado (0 desativa o limite)">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Ajuste automático de limite</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled motion-detection camera-config" id="autoThresholdTuningSwitch"></td>
+                            <td><span class="help-mark" title="habilite isso para ajustar automaticamente o limite">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Detecção automática de ruído</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled motion-detection camera-config" id="autoNoiseDetectSwitch"></td>
+                            <td><span class="help-mark" title="habilite isso para ajustar automaticamente o nível de ruído">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="25" snap="0" ticksnum="6" decimals="0" unit="%" depends="!autoNoiseDetect">
+                            <td class="settings-item-label"><span class="settings-item-label">Nível de ruído</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled motion-detection camera-config" id="noiseLevelSlider"></td>
+                            <td><span class="help-mark" title="define manualmente o nível de ruído para um valor fixo">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="100" snap="2" ticksnum="5" decimals="0" unit="%">
+                            <td class="settings-item-label"><span class="settings-item-label">Detecção de interruptor de luz</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled motion-detection camera-config" id="lightSwitchDetectSlider"></td>
+                            <td><span class="help-mark" title="define a porcentagem da imagem que precisa ser alterada para que o evento seja tratado como uma mudança repentina de luz em vez de movimento (0% desativa a função)">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Filtro de remoção de manchas</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled motion-detection camera-config" id="despeckleFilterSwitch"></td>
+                            <td><span class="help-mark" title="habilite isso para aplicar um filtro de remoção de manchas aos quadros antes de detectar movimento">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="86400" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Tempo para finalizar gravação</span></td>
+                            <td class="settings-item-value"><input type="text" class="number styled motion-detection camera-config" id="eventGapEntry"><span class="settings-item-unit">seconds</span></td>
+                            <td><span class="help-mark" title="define o número de segundos de silêncio (ou seja, sem movimento) que marcam o final de um evento de movimento">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="1000" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Capturado antes</span></td>
+                            <td class="settings-item-value"><input type="text" class="number styled motion-detection camera-config" id="preCaptureEntry"><span class="settings-item-unit">frames</span></td>
+                            <td><span class="help-mark" title="define o número de quadros a serem capturados (e incluídos no filme) antes que um evento de movimento seja detectado">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="1000" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Capturado Depois</span></td>
+                            <td class="settings-item-value"><input type="text" class="number styled motion-detection camera-config" id="postCaptureEntry"><span class="settings-item-unit">frames</span></td>
+                            <td><span class="help-mark" title="define o número de quadros a serem capturados (e incluídos no filme) após o final de um evento de movimento">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="1000" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Quadros mínimos de movimento</span></td>
+                            <td class="settings-item-value"><input type="text" class="number styled motion-detection camera-config" id="minimumMotionFramesEntry"><span class="settings-item-unit">frames</span></td>
+                            <td><span class="help-mark" title="define o número mínimo de quadros de movimento sucessivos necessários para iniciar um evento de movimento">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Máscara de Detecção de Movimento</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled motion-detection camera-config" id="motionMaskSwitch"></td>
+                            <td><span class="help-mark" title="permite mascarar imagens para uma detecção de movimento mais seletiva e precisa">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionMask">
+                            <td class="settings-item-label"><span class="settings-item-label">Tipo de mascara</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled motion-detection camera-config" id="motionMaskTypeSelect">
+                                    <option value="smart">Inteligente</option>
+                                    <option value="editable">Editavel</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="a opção inteligente detecta automaticamente regiões com movimento regular e cria dinamicamente uma máscara interna, enquanto a máscara editável permite que você a construa manualmente">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="10" snap="1" ticksnum="10" decimals="0" unit="" depends="motionMask motionMaskType=smart">
+                            <td class="settings-item-label"><span class="settings-item-label">Lentidão esperta da máscara</span></td>
+                            <td class="settings-item-value"><input type="text" class="range styled motion-detection camera-config" id="smartMaskSluggishnessSlider"></td>
+                            <td><span class="help-mark" title="valores mais altos resultam em uma máscara inteligente mais duradoura com um processo de construção mais lento">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionMask motionMaskType=editable">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value">
+                                <div class="button normal-button edit-mask-button" id="motionMaskEditButton">Editar</div>
+                                <div class="button normal-button save-mask-button" id="motionMaskSaveButton">Salvar</div>
+                                <input type="text" class="motion-detection camera-config" id="motionMaskLinesEntry">
+                            </td>
+                            <td><span class="help-mark" title="clique neste botão para ativar / desativar o editor de máscaras">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionMask motionMaskType=editable">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value"><div class="button normal-button clear-mask-button" id="motionMaskClearButton">Limpar</div></td>
+                            <td><span class="help-mark" title="clique neste botão para limpar a máscara atual">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Rastrear alterações no video</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled motion-detection camera-config" id="showFrameChangesSwitch"></td>
+                            <td><span class="help-mark" title="se isso estiver ativado, as alterações de quadro (número de pixels e área alterada) são mostradas no vídeo; habilite temporariamente esta opção para ajudar a ajustar os parâmetros de detecção de movimento">?</span></td>
+                        </tr>
+                        <tr class="settings-item">
+                            <td class="settings-item-label"><span class="settings-item-label">Criar arquivos de mídia de depuração</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled motion-detection camera-config" id="createDebugMediaSwitch"></td>
+                            <td><span class="help-mark" title="quando ativado, cria filmes e imagens especiais que ajudam a depurar problemas de detecção de movimento">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('motion-detection', {}).get('configs', []) %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- Motion Notifications -->
+                    <div class="settings-section-title" id="notificationsSectionDiv">
+                        <span class="help-mark" title="ative isso se desejar ser notificado quando for detectado movimento">?</span>
+                        <a class="settings-section-title">Notificações de movimento</a>
+                        <span class="minimize"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Enviar E-mail</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled notifications camera-config" id="emailNotificationsEnabledSwitch"></td>
+                            <td><span class="help-mark" title="ative-o se desejar receber um email sempre que um evento de movimento for detectado">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="emailNotificationsEnabled motionDetectionEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Endereço de email</span></td>
+                            <td class="settings-item-value"><input type="text" autocomplete="new-password" class="styled notifications camera-config" id="emailAddressesEntry" placeholder="email addresses..."></td>
+                            <td><span class="help-mark" title="os endereços de email (separados por vírgula) adicionados aqui receberão notificações sempre que um evento de movimento for detectado">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="emailNotificationsEnabled motionDetectionEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">SMTP Server</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled notifications camera-config" id="smtpServerEntry" placeholder="exemplo smtp.gmail.com"></td>
+                            <td><span class="help-mark" title="insira o nome do host ou o endereço IP do seu servidor SMTP (no Gmail, use smtp.gmail.com)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="1" max="65535" depends="emailNotificationsEnabled motionDetectionEnabled" required="true">
+                            <td class="settings-item-label"><span class="settings-item-label">SMTP Porta</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled number notifications camera-config" id="smtpPortEntry" placeholder="exemplo 587"></td>
+                            <td><span class="help-mark" title="insira a porta usada pelo servidor SMTP (normalmente 465 para conexões não TLS e 587 para conexões TLS)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="emailNotificationsEnabled motionDetectionEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Conta SMTP</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled notifications camera-config" id="smtpAccountEntry" placeholder="account@gmail.com..."></td>
+                            <td><span class="help-mark" title="digite sua conta SMTP (normalmente seu endereço de email)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="emailNotificationsEnabled motionDetectionEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Senha SMTP</span></td>
+                            <td class="settings-item-value"><input type="password" autocomplete="new-password" class="styled notifications camera-config" id="smtpPasswordEntry"></td>
+                            <td><span class="help-mark" title="insira a senha da sua conta SMTP (para o Gmail, use sua senha do Google ou uma senha gerada específica do aplicativo)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="emailNotificationsEnabled motionDetectionEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">De:</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled notifications camera-config" id="emailFromEntry" placeholder="Endereçõ a ser exibido..."></td>
+                            <td><span class="help-mark" title="defina um endereço De personalizado, se o seu serviço SMTP exigir um (o primeiro endereço de e-mail de destino será usado se for deixado em branco)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="emailNotificationsEnabled motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Use TLS</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled notifications camera-config" id="smtpTlsSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se o servidor SMTP exigir TLS (o Gmail precisa estar ativado)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" min="0" max="60" required="true" depends="emailNotificationsEnabled motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Imagens anexadas Período</span></td>
+                            <td class="settings-item-value"><input type="text" class="number styled notifications camera-config" id="emailPictureTimeSpanEntry"><span class="settings-item-unit">Segundos</span></td>
+                            <td><span class="help-mark" title="define o intervalo de tempo de pesquisa de imagens a ser usado ao criar anexos de email (valores mais altos geram emails com mais fotos ao custo de um atraso maior na notificação); defina como 0 para desativar anexos de fotos; você também deve ativar Imagens estáticas para que isso funcione">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="emailNotificationsEnabled motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label"></span></td>
+                            <td class="settings-item-value"><div class="button normal-button test-button" id="emailTestButton">Testar Email</div></td>
+                            <td><span class="help-mark" title="clique neste botão para testar as notificações por e-mail depois de preencher os detalhes necessários">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Call A Web Hook</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled notifications camera-config" id="webHookNotificationsEnabledSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se desejar que um URL seja solicitado sempre que um evento de movimento for detectado">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="webHookNotificationsEnabled motionDetectionEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Web Hook URL</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled notifications camera-config" id="webHookNotificationsUrlEntry" placeholder="e.g. http://example.com/notify/"></td>
+                            <td><span class="help-mark" title="um URL a ser solicitado quando for detectado movimento; os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = day, %H = hour, %M = minute, %S = second, %q = frame number, %v = event number">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="webHookNotificationsEnabled motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">HTTP Metodo</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled notifications camera-config" id="webHookNotificationsHttpMethodSelect">
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST (query)</option>
+                                    <option value="POSTf">POST (form)</option>
+                                    <option value="POSTj">POST (json)</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="o método HTTP a ser usado ao solicitar a URL do gancho da Web (os parâmetros codificados em URL fornecidos serão de fato transmitidos conforme indicado aqui)">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Rodar um comando</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled notifications camera-config" id="commandNotificationsEnabledSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se desejar executar um comando sempre que um evento de movimento for detectado">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="commandNotificationsEnabled motionDetectionEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Comando</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled notifications camera-config" id="commandNotificationsEntry" placeholder="Insira o comando aqui...."></td>
+                            <td><span class="help-mark" title="um comando a ser executado quando o movimento for detectado; vários comandos podem ser separados por ponto e vírgula; não use ponto e vírgula dentro de comandos; os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = day, %H = hour, %M = minute, %S = second, %q = frame number, %v = event number">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td colspan="100"><div class="settings-item-separator"></div></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Executar um comando final</span></td>
+                            <td class="settings-item-value"><input type="checkbox" class="styled notifications camera-config" id="commandEndNotificationsEnabledSwitch"></td>
+                            <td><span class="help-mark" title="ative isso se desejar executar um comando sempre que um evento de movimento terminar">?</span></td>
+                        </tr>
+                        <tr class="settings-item" required="true" depends="commandEndNotificationsEnabled motionDetectionEnabled" strip="true">
+                            <td class="settings-item-label"><span class="settings-item-label">Comando</span></td>
+                            <td class="settings-item-value"><input type="text" class="styled notifications camera-config" id="commandEndNotificationsEntry" placeholder="Insira o comando aqui...."></td>
+                            <td><span class="help-mark" title="um comando a ser executado quando o evento de movimento terminar; vários comandos podem ser separados por ponto e vírgula; não use ponto e vírgula dentro de comandos; os seguintes tokens especiais são aceitos: %Y = year, %m = month, %d = date, %H = hour, %M = minute, %S = second, %q = frame number">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('notifications', {}).get('configs', []) %}
+                            {{config_item(config, "motionDetectionEnabled")}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- Working Schedule -->
+                    <div class="settings-section-title" depends="motionDetectionEnabled" id="workingScheduleSectionDiv">
+                        <input type="checkbox" class="styled section working-schedule camera-config" id="workingScheduleEnabledSwitch">
+                        <span class="help-mark" title="enable this if you want to define a weekly working schedule for motion detection">?</span>
+                        <a class="settings-section-title">Cronograma de gravação</a>
+                        <span class="minimize"></span>
+                    </div>
+                    <table class="settings">
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Segunda-feira</span></td>
+                            <td class="settings-item-value">
+                                <input type="checkbox" class="styled working-schedule camera-config" id="mondayEnabledSwitch">
+                                <span class="settings-item-unit time">from</span><input type="text" class="styled working-schedule time camera-config" id="mondayFromEntry">
+                                <span class="settings-item-unit time">to</span><input type="text" class="styled working-schedule time camera-config" id="mondayToEntry">
+                            </td>
+                            <td><span class="help-mark" title="define o intervalo de horário do horário de trabalho para as segundas-feiras">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Terça-feira</span></td>
+                            <td class="settings-item-value">
+                                <input type="checkbox" class="styled working-schedule camera-config" id="tuesdayEnabledSwitch">
+                                <span class="settings-item-unit time">from</span><input type="text" class="styled working-schedule time camera-config" id="tuesdayFromEntry">
+                                <span class="settings-item-unit time">to</span><input type="text" class="styled working-schedule time camera-config" id="tuesdayToEntry">
+                            </td>
+                            <td><span class="help-mark" title="define o intervalo de horário da programação de trabalho para as terças-feiras">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Quarta-feira</span></td>
+                            <td class="settings-item-value">
+                                <input type="checkbox" class="styled working-schedule camera-config" id="wednesdayEnabledSwitch">
+                                <span class="settings-item-unit time">from</span><input type="text" class="styled working-schedule time camera-config" id="wednesdayFromEntry">
+                                <span class="settings-item-unit time">to</span><input type="text" class="styled working-schedule time camera-config" id="wednesdayToEntry">
+                            </td>
+                            <td><span class="help-mark" title="define o intervalo de horário da programação de trabalho para quartas-feiras">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Quinta-feira</span></td>
+                            <td class="settings-item-value">
+                                <input type="checkbox" class="styled working-schedule camera-config" id="thursdayEnabledSwitch">
+                                <span class="settings-item-unit time">from</span><input type="text" class="styled working-schedule time camera-config" id="thursdayFromEntry">
+                                <span class="settings-item-unit time">to</span><input type="text" class="styled working-schedule time camera-config" id="thursdayToEntry">
+                            </td>
+                            <td><span class="help-mark" title="define o intervalo de horário da programação de trabalho para as quintas-feiras">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Sexta-feira</span></td>
+                            <td class="settings-item-value">
+                                <input type="checkbox" class="styled working-schedule camera-config" id="fridayEnabledSwitch">
+                                <span class="settings-item-unit time">from</span><input type="text" class="styled working-schedule time camera-config" id="fridayFromEntry">
+                                <span class="settings-item-unit time">to</span><input type="text" class="styled working-schedule time camera-config" id="fridayToEntry">
+                            </td>
+                            <td><span class="help-mark" title="define o intervalo de horário do horário de trabalho para sexta-feira">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Sábado</span></td>
+                            <td class="settings-item-value">
+                                <input type="checkbox" class="styled working-schedule camera-config" id="saturdayEnabledSwitch">
+                                <span class="settings-item-unit time">from</span><input type="text" class="styled working-schedule time camera-config" id="saturdayFromEntry">
+                                <span class="settings-item-unit time">to</span><input type="text" class="styled working-schedule time camera-config" id="saturdayToEntry">
+                            </td>
+                            <td><span class="help-mark" title="define o intervalo de horário da programação de trabalho para o sábado">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Domingo</span></td>
+                            <td class="settings-item-value">
+                                <input type="checkbox" class="styled working-schedule camera-config" id="sundayEnabledSwitch">
+                                <span class="settings-item-unit time">from</span><input type="text" class="styled working-schedule time camera-config" id="sundayFromEntry">
+                                <span class="settings-item-unit time">to</span><input type="text" class="styled working-schedule time camera-config" id="sundayToEntry">
+                            </td>
+                            <td><span class="help-mark" title="define o intervalo de horário da programação de trabalho para domingo">?</span></td>
+                        </tr>
+                        <tr class="settings-item" depends="motionDetectionEnabled">
+                            <td class="settings-item-label"><span class="settings-item-label">Detectar movimento</span></td>
+                            <td class="settings-item-value">
+                                <select class="styled working-schedule camera-config" id="workingScheduleTypeSelect">
+                                    <option value="during">Durante o horário de trabalho</option>
+                                    <option value="outside">Horário de trabalho externo</option>
+                                </select>
+                            </td>
+                            <td><span class="help-mark" title="define se a detecção de movimento deve estar ativa durante ou fora do horário de trabalho">?</span></td>
+                        </tr>
+                        {% for config in camera_sections.get('working-schedule', {}).get('configs', []) %}
+                            {{config_item(config, "motionDetectionEnabled")}}
+                        {% endfor %}
+                    </table>
+
+                    <!-- Additional Camera Sections -->
+                    {% for section in camera_sections.values() %}
+                    {% if section.get('label') and section.get('configs') %}
+                    <div class="settings-section-title">
+                        {% if section.get('onoff') %}<input type="checkbox" class="styled section additional-section {{section['name']}} camera-config" id="{{section['name']}}Switch">{% endif %}
+                        {% if section.get('description') %}<span class="help-mark" title="{{section['description']}}">?</span>{% endif %}
+                        <a class="settings-section-title">{{section['label']}}</a>
+                        <span class="minimize {% if section.get('open') %}open{% endif %}"></span>
+                    </div>
+                    <table class="settings">
+                        {% for config in section['configs'] %}
+                            {{config_item(config)}}
+                        {% endfor %}
+                    </table>
+                    {% endif %}
+                    {% endfor %}
+
+                    <div class="settings-progress"></div>
+                </form>
+            </div>
+        </div>
+        <img class="background-logo" src="{{static_path}}img/motioneye-logo.svg" onmousedown="return false;">
+        <div class="page-container"></div>
+        <div class="footer">
+            <div class="copyright-note">copyright &copy; Rodrigo Steinhorst - Infotec Networks</div>
+        </div>
+    </div>
+    {% else %}
+        <div class="camera-frame" id="camera{{camera_id}}"
+                streaming_framerate="{{camera_config['stream_maxrate']}}" streaming_server_resize="{{camera_config['@webcam_server_resize']|string|lower}}"
+                proto="{{camera_config['@proto']}}" url="{{camera_config['@url']}}">
+
+            <div class="camera-container">
+                <div class="camera-placeholder"><img class="no-camera" src="{{static_path}}img/no-camera.svg"></div><img
+                    class="camera"><div class="camera-progress"><img class="camera-progress"></div>
+            </div>
+        </div>
+    {% endif %}
+    <div class="modal-glass"></div>
+    <div class="modal-container"></div>
+    <div class="popup-message-container"></div>
+{% endblock %}
